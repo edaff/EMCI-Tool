@@ -130,3 +130,6 @@ dmypy.json
 
 # Google API Tokens
 *.pickle
+
+# Log Files
+logs/
