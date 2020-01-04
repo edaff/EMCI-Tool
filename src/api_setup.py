@@ -6,12 +6,9 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 
 # If modifying these scopes, delete the file token.pickle.
-SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+SCOPES = ['https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/spreadsheets']
 
-def gmail_api_setup():
-    """Shows basic usage of the Gmail API.
-    Lists the user's Gmail labels.
-    """
+def api_setup():
     creds = None
     # The file token.pickle stores the user's access and refresh tokens, and is
     # created automatically when the authorization flow completes for the first
@@ -31,6 +28,18 @@ def gmail_api_setup():
         with open('token.pickle', 'wb') as token:
             pickle.dump(creds, token)
 
-    service = build('gmail', 'v1', credentials=creds)
+    return creds
 
-    return service
+def create_gmail_service():
+    creds = api_setup()
+
+    gmail_service = build('gmail', 'v1', credentials=creds)
+
+    return gmail_service
+
+def create_sheets_service():
+    creds = api_setup()
+
+    sheets_service = build('sheets', 'v4', credentials=creds)
+
+    return sheets_service
