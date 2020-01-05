@@ -6,7 +6,9 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 
 # If modifying these scopes, delete the file token.pickle.
-SCOPES = ['https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/spreadsheets']
+SCOPES = ['https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive.metadata.readonly']
 
 def api_setup():
     creds = None
@@ -43,3 +45,10 @@ def create_sheets_service():
     sheets_service = build('sheets', 'v4', credentials=creds)
 
     return sheets_service
+
+def create_google_drive_service():
+    creds = api_setup()
+
+    google_drive_service = build('drive', 'v3', credentials=creds)
+
+    return google_drive_service
