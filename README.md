@@ -9,7 +9,7 @@ Resources:
 -- https://developers.google.com/gmail/api/guides/filtering
 
 # Sheets
--- https://developers.google.com/sheets/api/guides/concepts#spreadsheet_id
+-- https://developers.google.com/sheets/api/guides/concepts
 -- https://developers.google.com/sheets/api/samples/sheet
 -- https://developers.google.com/sheets/api/samples/sheet#determine_sheet_id_and_other_properties
 
