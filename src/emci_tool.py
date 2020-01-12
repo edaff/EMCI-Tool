@@ -8,6 +8,9 @@ SPREADSHEET_NAME = 'Dev Sample Rolling AR Report'
 OWED_SHEET_NAME = 'Owed'
 PAID_SHEET_NAME = 'Paid'
 QUERY_EMAIL_ADDRESS = 'celliott@emciwireless.com'
+BEFORE_DATE = int(datetime.now().replace(day=31, month=12, year=2019).timestamp())
+AFTER_DATE = int(datetime.today().replace(day=1, month=12, year=2019).timestamp())
+
 class COLUMN_NAMES(Enum):
     TRANSACTION_ID = 'Transaction ID'
     OWED_TO_COM_TECH = 'Owed to Com-Tech'
@@ -15,10 +18,8 @@ class COLUMN_NAMES(Enum):
     DATE_PAID = 'Date Paid'
     CHECK_NUMBER = 'Check number'
 
-
-
 def get_email_query():
-    return ("from:%s before:%s after:%s" %(QUERY_EMAIL_ADDRESS, int(datetime.now().replace(day=31, month=12, year=2019).timestamp()), int(datetime.today().replace(day=1, month=12, year=2019).timestamp())))
+    return ("from:%s before:%s after:%s" %(QUERY_EMAIL_ADDRESS, BEFORE_DATE, AFTER_DATE))
 
 def get_spreadsheet_query():
     return "name = '{0}'".format(SPREADSHEET_NAME)
@@ -99,10 +100,47 @@ def find_transaction_row(transaction_id_column, sheet_values, transaction):
         if(value[transaction_id_column] == transaction):
             return idx
 
+def copy_row_request(transaction_row, owed_sheet_values, paid_sheet_values, spreadsheet_id, sheets_service):
+    insert_request_body = {
+        "values": [
+            owed_sheet_values[transaction_row][0:15]
+        ]
+    }
+    request_range = "'{0}'!A{1}:P{2}".format(PAID_SHEET_NAME, len(paid_sheet_values) + 1, len(paid_sheet_values) + 1)
+
+    return sheets_service.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id,
+        range=request_range,
+        valueInputOption='USER_ENTERED',
+        includeValuesInResponse=False,
+        body=insert_request_body).execute()
+
+def delete_row_request(owed_sheet_id, transaction_row, spreadsheet_id, sheets_service):
+    delete_request_body = {
+        "requests": [
+            {
+            "deleteDimension": {
+                "range": {
+                "sheetId": owed_sheet_id,
+                "dimension": "ROWS",
+                "startIndex": transaction_row,
+                "endIndex": transaction_row + 1
+                }
+            }
+            }
+        ],
+        }
+
+    return sheets_service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=delete_request_body).execute()
+
 def main():
     num_mismatches = 0
     log_file_name = '..\\logs\\' + datetime.now().strftime('%m-%d-%Y') + '.txt'
     log_file = open(log_file_name, 'w', encoding='utf-8')
+
+    # ********************************
+    #           API Setup
+    # ********************************
 
     # Create services for APIs
     gmail_service = create_gmail_service()
@@ -135,9 +173,17 @@ def main():
         log_file.close()
         return
 
+    # ********************************
+    #      Main Program Loop
+    # ********************************
+
     for message_meta in response['messages']:
         num_mismatches = 0
         num_missing_rows = 0
+
+        # ********************************
+        #         Email Scraping
+        # ********************************
 
         # Grab the message meta
         meta = get_email_meta(gmail_service, log_file, response)
@@ -147,20 +193,22 @@ def main():
 
         # Pull out the needed data
         transactions = get_transactions(msg_str)
-
         trace_number = get_trace_number(msg_str)
-
         transaction_date = get_transaction_date(msg_str)
 
-        # Do spreadsheet processing
+        # ********************************
+        #      Spreadsheet Processing
+        # ********************************
 
         # Iterate over all of the transactions
         for transaction in transactions:
+            # Fetch the two needed sheets and their data
             owed_sheet = sheets_service.spreadsheets().values().get(spreadsheetId=spreadsheet_id, range=OWED_SHEET_NAME).execute()
             paid_sheet = sheets_service.spreadsheets().values().get(spreadsheetId=spreadsheet_id, range=PAID_SHEET_NAME).execute()
             owed_sheet_values = owed_sheet.get('values', [])
             paid_sheet_values = paid_sheet.get('values', [])
 
+            # Grab indexes for all of the required columns
             transaction_id_column = find_column(owed_sheet, COLUMN_NAMES.TRANSACTION_ID.value)
             owed_to_com_tech_column = find_column(owed_sheet, COLUMN_NAMES.OWED_TO_COM_TECH.value)
             paid_to_date_column = find_column(owed_sheet, COLUMN_NAMES.PAID_TO_DATE.value)
@@ -173,58 +221,42 @@ def main():
             # Skip this transaction if the corresponding row can't be found in the Owed sheet
             if(transaction_row == None):
                 if(find_transaction_row(transaction_id_column, paid_sheet_values, transaction) == None):
-                    log_file.write('Transaction ID {0} NOT FOUND in owed sheet...Skipping\n'.format(transaction))
+                    log_file.write('Missing Transaction Found: Transaction ID {0} NOT FOUND in owed or paid sheet ... Skipping\n'.format(transaction))
                     num_missing_rows += 1
                 continue
 
+            # If the transaction ID already exists in the paid sheet, this guy has already been processed
             if(find_transaction_row(transaction_id_column, paid_sheet_values, transaction) != None):
                 continue
 
             # Skip this transaction if the Owed to Com-Tech value does not match the transaction value
             if(owed_sheet_values[transaction_row][owed_to_com_tech_column] != transactions[transaction]):
-                log_file.write("Transaction ID {0} 'Owed to Com-Tech' value of {1} does not match the transactions's value of {2}...Skipping\n".format(
+                log_file.write("Mismatch Found: Transaction ID {0} 'Owed to Com-Tech' value of '{1}' does not match the transaction's value of '{2}' ... Skipping\n".format(
                     transaction,
                     owed_sheet_values[transaction_row][owed_to_com_tech_column],
                     transactions[transaction]))
                 num_mismatches += 1
                 continue
 
+            # Format the new spreadsheet row to be inserted into the 'Paid' sheet
             owed_sheet_values[transaction_row][owed_to_com_tech_column] = "=I{0}-K{1}".format(transaction_row, transaction_row)
             owed_sheet_values[transaction_row][paid_to_date_column] = transactions[transaction]
             owed_sheet_values[transaction_row][date_paid_column] = transaction_date
             owed_sheet_values[transaction_row][check_number_column] = trace_number
 
             # Copy the found row to the paid sheet
-            insert_request_body = {
-                "values": [
-                    owed_sheet_values[transaction_row][0:15]
-                ]
-            }
-            request_range = "'{0}'!A{1}:P{2}".format(PAID_SHEET_NAME, len(paid_sheet_values) + 1, len(paid_sheet_values) + 1)
-            sheets_service.spreadsheets().values().update(spreadsheetId=spreadsheet_id, range=request_range, valueInputOption='USER_ENTERED', includeValuesInResponse=False, body=insert_request_body).execute()
+            copy_row_request(transaction_row, owed_sheet_values, paid_sheet_values, spreadsheet_id, sheets_service)
 
-            # Delet the old row from the Owed sheet
-            delete_request_body = {
-            "requests": [
-                {
-                "deleteDimension": {
-                    "range": {
-                    "sheetId": owed_sheet_id,
-                    "dimension": "ROWS",
-                    "startIndex": transaction_row,
-                    "endIndex": transaction_row + 1
-                    }
-                }
-                }
-            ],
-            }
-            sheets_service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=delete_request_body).execute()
+            # Delete the old row from the Owed sheet
+            delete_row_request(owed_sheet_id, transaction_row, spreadsheet_id, sheets_service)
+            
 
         log_file.write('---------------------------------\n{0} Mismatches Found.\n---------------------------------\n'.format(num_mismatches))
-        log_file.write('{0} Missing Rows Found.\n---------------------------------\n'.format(num_missing_rows))
+        log_file.write('{0} Missing Transactions Found.\n---------------------------------\n'.format(num_missing_rows))
 
 
     print('Processing Complete! Logs saved to: {0}'.format(log_file_name))
+    print('Praise the sun! \[T]/')
     log_file.close()
 
 if __name__ == '__main__':
