@@ -95,6 +95,11 @@ def extract_subject(meta):
 def find_column(sheet, column_name):
     return sheet.get('values', [])[0].index(column_name)
 
+def get_sheet_id(sheet_meta, sheet_name):
+    for sheet in sheet_meta['sheets']:
+        if(sheet['properties']['title'] == sheet_name):
+            return sheet['properties']['sheetId']
+
 def find_transaction_row(transaction_id_column, sheet_values, transaction):
     for idx, value in enumerate(sheet_values):
         if(value[transaction_id_column] == transaction):
@@ -161,8 +166,8 @@ def main():
     spreadsheet_id = response['files'][0]['id']
 
     sheet_meta = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id, includeGridData=False).execute()
-    owed_sheet_id = sheet_meta['sheets'][1]['properties']['sheetId']
-    paid_sheet_id = sheet_meta['sheets'][2]['properties']['sheetId']
+    owed_sheet_id = get_sheet_id(sheet_meta, OWED_SHEET_NAME)
+    paid_sheet_id = get_sheet_id(sheet_meta, PAID_SHEET_NAME)
 
     # Query for emails
     response = gmail_service.users().messages().list(userId='me', q=get_email_query(), maxResults=100).execute()
@@ -230,7 +235,7 @@ def main():
                 continue
 
             # Skip this transaction if the Owed to Com-Tech value does not match the transaction value
-            if(owed_sheet_values[transaction_row][owed_to_com_tech_column] != transactions[transaction]):
+            if(owed_sheet_values[transaction_row][owed_to_com_tech_column].replace(',','') != transactions[transaction]):
                 log_file.write("Mismatch Found: Transaction ID {0} 'Owed to Com-Tech' value of '{1}' does not match the transaction's value of '{2}' ... Skipping\n".format(
                     transaction,
                     owed_sheet_values[transaction_row][owed_to_com_tech_column],
@@ -238,8 +243,10 @@ def main():
                 num_mismatches += 1
                 continue
 
+            paid_sheet_size = len(paid_sheet_values) + 1
+
             # Format the new spreadsheet row to be inserted into the 'Paid' sheet
-            owed_sheet_values[transaction_row][owed_to_com_tech_column] = "=I{0}-K{1}".format(transaction_row, transaction_row)
+            owed_sheet_values[transaction_row][owed_to_com_tech_column] = "=I{0}-K{1}".format(paid_sheet_size, paid_sheet_size)
             owed_sheet_values[transaction_row][paid_to_date_column] = transactions[transaction]
             owed_sheet_values[transaction_row][date_paid_column] = transaction_date
             owed_sheet_values[transaction_row][check_number_column] = trace_number
