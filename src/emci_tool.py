@@ -1,15 +1,17 @@
 from api_setup import create_gmail_service, create_sheets_service, create_google_drive_service
-from datetime import datetime
+from datetime import datetime, timedelta
 import base64
 from enum import Enum
+import re
+import decimal
 
 # Constants
-SPREADSHEET_NAME = 'Dev Sample Rolling AR Report'
+SPREADSHEET_NAME = 'Demo Sample Rolling AR Report'
 OWED_SHEET_NAME = 'Owed'
 PAID_SHEET_NAME = 'Paid'
 QUERY_EMAIL_ADDRESS = 'celliott@emciwireless.com'
-BEFORE_DATE = int(datetime.now().replace(day=31, month=12, year=2019).timestamp())
-AFTER_DATE = int(datetime.today().replace(day=1, month=12, year=2019).timestamp())
+BEFORE_DATE = int(datetime.now().timestamp())
+AFTER_DATE = int((datetime.today() - timedelta(days=5)).timestamp())
 
 class COLUMN_NAMES(Enum):
     TRANSACTION_ID = 'Transaction ID'
@@ -24,16 +26,16 @@ def get_email_query():
 def get_spreadsheet_query():
     return "name = '{0}'".format(SPREADSHEET_NAME)
 
-def get_email_meta(gmail_service, log_file, response):
-    meta = gmail_service.users().messages().get(userId='me', id=response['messages'][0]['id'], format='metadata').execute()
+def get_email_meta(gmail_service, log_file, message_meta):
+    meta = gmail_service.users().messages().get(userId='me', id=message_meta['id'], format='metadata').execute()
     email_subject = extract_subject(meta)
     log_file.write('Processing Email: ' + email_subject + '\n---------------------------------\n')
     print('Processing Email: ' + email_subject + '\n')
 
     return meta
 
-def get_email_raw_data(gmail_service, response):
-    message = gmail_service.users().messages().get(userId='me', id=response['messages'][0]['id'], format='raw').execute()
+def get_email_raw_data(gmail_service, message_meta):
+    message = gmail_service.users().messages().get(userId='me', id=message_meta['id'], format='raw').execute()
     
     return str(base64.urlsafe_b64decode(message['raw'].encode('ASCII')))
 
@@ -51,14 +53,23 @@ def get_transactions(msg_str):
         # Grab the Transation Amount
         fields_end_index = entry.find('\\r\\n')
         fields = entry[0:fields_end_index].split()
-        amount = '$' + fields[4]
+
+        if(len(fields) == 0):
+            break
+
+        raw_amount = fields[4]
+        formatted_amount = '$' + f'{decimal.Decimal(raw_amount):,}'
 
         # Grab the Transaction ID
-        transcation_id_start_index = entry.find('Commission List ID = ') + len('Commission List ID = ')
+        if(entry.find('List ID = ') != -1):
+            transcation_id_start_index = entry.find('List ID = ') + len('List ID = ')
+        else:
+            transcation_id_start_index = entry.find('List ID: ') + len('List ID: ')
+
         transaction_id = entry[transcation_id_start_index:end_index]
 
         # Store to the dictionary
-        transactions[transaction_id] = amount
+        transactions[transaction_id] = formatted_amount
 
         # Move to the next transaction
         start_index = msg_str.find('\\\\\\r\\n\\r\\n', start_index) + len('\\\\\\r\\n\\r\\n')
@@ -138,6 +149,9 @@ def delete_row_request(owed_sheet_id, transaction_row, spreadsheet_id, sheets_se
 
     return sheets_service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=delete_request_body).execute()
 
+def strip_non_numbers(val):
+    return re.sub("[^0-9]", "", val)
+
 def main():
     num_mismatches = 0
     log_file_name = '..\\logs\\' + datetime.now().strftime('%m-%d-%Y') + '.txt'
@@ -191,10 +205,13 @@ def main():
         # ********************************
 
         # Grab the message meta
-        meta = get_email_meta(gmail_service, log_file, response)
+        meta = get_email_meta(gmail_service, log_file, message_meta)
+
+        if("EDI ADVICE" not in extract_subject(meta)):
+            continue
 
         # Get the raw message string
-        msg_str = get_email_raw_data(gmail_service, response)
+        msg_str = get_email_raw_data(gmail_service, message_meta)
 
         # Pull out the needed data
         transactions = get_transactions(msg_str)
@@ -235,7 +252,7 @@ def main():
                 continue
 
             # Skip this transaction if the Owed to Com-Tech value does not match the transaction value
-            if(owed_sheet_values[transaction_row][owed_to_com_tech_column].replace(',','') != transactions[transaction]):
+            if(strip_non_numbers(owed_sheet_values[transaction_row][owed_to_com_tech_column]) != strip_non_numbers(transactions[transaction])):
                 log_file.write("Mismatch Found: Transaction ID {0} 'Owed to Com-Tech' value of '{1}' does not match the transaction's value of '{2}' ... Skipping\n".format(
                     transaction,
                     owed_sheet_values[transaction_row][owed_to_com_tech_column],
@@ -259,7 +276,7 @@ def main():
             
 
         log_file.write('---------------------------------\n{0} Mismatches Found.\n---------------------------------\n'.format(num_mismatches))
-        log_file.write('{0} Missing Transactions Found.\n---------------------------------\n'.format(num_missing_rows))
+        log_file.write('{0} Missing Transactions Found.\n---------------------------------\n\n'.format(num_missing_rows))
 
 
     print('Processing Complete! Logs saved to: {0}'.format(log_file_name))
