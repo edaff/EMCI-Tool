@@ -135,4 +135,4 @@ dmypy.json
 logs/
 
 # Auth
-auth/credentials.json
+*.json
