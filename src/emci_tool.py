@@ -6,10 +6,10 @@ import re
 import decimal
 
 # Constants
-SPREADSHEET_NAME = 'Demo Sample Rolling AR Report'
+SPREADSHEET_NAME = 'Rolling AR Report'
 OWED_SHEET_NAME = 'Owed'
 PAID_SHEET_NAME = 'Paid'
-QUERY_EMAIL_ADDRESS = 'celliott@emciwireless.com'
+QUERY_EMAIL_ADDRESS = 'comtech@emciwireless.com'
 BEFORE_DATE = int(datetime.now().timestamp())
 AFTER_DATE = int((datetime.today() - timedelta(days=5)).timestamp())
 
