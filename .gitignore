@@ -133,3 +133,6 @@ dmypy.json
 
 # Log Files
 logs/
+
+# Auth
+auth/credentials.json
