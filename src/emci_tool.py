@@ -30,7 +30,7 @@ def get_email_meta(gmail_service, log_file, message_meta):
     meta = gmail_service.users().messages().get(userId='me', id=message_meta['id'], format='metadata').execute()
     email_subject = extract_subject(meta)
     log_file.write('Processing Email: ' + email_subject + '\n---------------------------------\n')
-    print('Processing Email: ' + email_subject + '\n')
+    print('Processing Email: ' + email_subject + '\n---------------------------------\n')
 
     return meta
 
@@ -174,11 +174,13 @@ def main():
     # Throw an error if the spreadsheet can't be found
     if(response['files'] == []):
         log_file.write('ERROR: Unable to find spreadsheet. Terminating program...')
+        print('ERROR: Unable to find spreadsheet. Terminating program...')
         log_file.close()
         return
 
     # Query for the spreadsheet using the found spreadsheet id
     log_file.write('Found spreadsheet: ' + response['files'][0]['name'] + '\n\n')
+    print('Found spreadsheet: ' + response['files'][0]['name'] + '\n\n')
     spreadsheet_id = response['files'][0]['id']
 
     sheet_meta = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id, includeGridData=False).execute()
@@ -191,6 +193,7 @@ def main():
     # Throw an error and exit if no emails are found
     if(response['resultSizeEstimate'] == 0):
         log_file.write('ERROR: No emails found. Terminating program...')
+        print('ERROR: No emails found. Terminating program...')
         log_file.close()
         return
 
@@ -246,6 +249,7 @@ def main():
             if(transaction_row == None):
                 if(find_transaction_row(transaction_id_column, paid_sheet_values, transaction) == None):
                     log_file.write('Missing Transaction Found: Transaction ID {0} NOT FOUND in owed or paid sheet ... Skipping\n'.format(transaction))
+                    print('Missing Transaction Found: Transaction ID {0} NOT FOUND in owed or paid sheet ... Skipping\n'.format(transaction))
                     num_missing_rows += 1
                 continue
 
@@ -256,6 +260,10 @@ def main():
             # Skip this transaction if the Owed to Com-Tech value does not match the transaction value
             if(strip_non_numbers(owed_sheet_values[transaction_row][owed_to_com_tech_column]) != strip_non_numbers(transactions[transaction])):
                 log_file.write("Mismatch Found: Transaction ID {0} 'Owed to Com-Tech' value of '{1}' does not match the transaction's value of '{2}' ... Skipping\n".format(
+                    transaction,
+                    owed_sheet_values[transaction_row][owed_to_com_tech_column],
+                    transactions[transaction]))
+                print("Mismatch Found: Transaction ID {0} 'Owed to Com-Tech' value of '{1}' does not match the transaction's value of '{2}' ... Skipping\n".format(
                     transaction,
                     owed_sheet_values[transaction_row][owed_to_com_tech_column],
                     transactions[transaction]))
@@ -278,7 +286,9 @@ def main():
             
 
         log_file.write('---------------------------------\n{0} Mismatches Found.\n---------------------------------\n'.format(num_mismatches))
+        print('---------------------------------\n{0} Mismatches Found.\n---------------------------------\n'.format(num_mismatches))
         log_file.write('{0} Missing Transactions Found.\n---------------------------------\n\n'.format(num_missing_rows))
+        print('{0} Missing Transactions Found.\n---------------------------------\n\n'.format(num_missing_rows))
 
 
     print('Processing Complete! Logs saved to: {0}'.format(log_file_name))
