@@ -113,6 +113,8 @@ def get_sheet_id(sheet_meta, sheet_name):
 
 def find_transaction_row(transaction_id_column, sheet_values, transaction):
     for idx, value in enumerate(sheet_values):
+        if(len(value) == 0):
+            continue
         if(value[transaction_id_column] == transaction):
             return idx
 
@@ -280,7 +282,6 @@ def main():
 
 
     print('Processing Complete! Logs saved to: {0}'.format(log_file_name))
-    print('Praise the sun! \[T]/')
     log_file.close()
 
 if __name__ == '__main__':
