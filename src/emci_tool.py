@@ -154,6 +154,13 @@ def delete_row_request(owed_sheet_id, transaction_row, spreadsheet_id, sheets_se
 def strip_non_numbers(val):
     return re.sub("[^0-9]", "", val)
 
+def remove_dollar_signs(val):
+    for idx, value in enumerate(val):
+        if idx != 3 and idx != 15:
+            val[idx] = value.replace('$', '')
+
+    return val
+
 def main():
     num_mismatches = 0
     log_file_name = '..\\logs\\' + datetime.now().strftime('%m-%d-%Y') + '.txt'
@@ -277,6 +284,7 @@ def main():
             owed_sheet_values[transaction_row][paid_to_date_column] = transactions[transaction]
             owed_sheet_values[transaction_row][date_paid_column] = transaction_date
             owed_sheet_values[transaction_row][check_number_column] = trace_number
+            owed_sheet_values[transaction_row] = remove_dollar_signs(owed_sheet_values[transaction_row])
 
             # Copy the found row to the paid sheet
             copy_row_request(transaction_row, owed_sheet_values, paid_sheet_values, spreadsheet_id, sheets_service)
@@ -286,9 +294,9 @@ def main():
             
 
         log_file.write('---------------------------------\n{0} Mismatches Found.\n---------------------------------\n'.format(num_mismatches))
-        print('---------------------------------\n{0} Mismatches Found.\n---------------------------------\n'.format(num_mismatches))
+        print('---------------------------------\n{0} Mismatches Found.\n---------------------------------'.format(num_mismatches))
         log_file.write('{0} Missing Transactions Found.\n---------------------------------\n\n'.format(num_missing_rows))
-        print('{0} Missing Transactions Found.\n---------------------------------\n\n'.format(num_missing_rows))
+        print('{0} Missing Transactions Found.\n---------------------------------\n'.format(num_missing_rows))
 
 
     print('Processing Complete! Logs saved to: {0}'.format(log_file_name))
