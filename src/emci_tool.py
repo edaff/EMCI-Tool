@@ -6,12 +6,12 @@ import re
 import decimal
 
 # Constants
-SPREADSHEET_NAME = 'Rolling AR Report'
+SPREADSHEET_NAME = 'Test Rolling AR Report'
 OWED_SHEET_NAME = 'Owed'
 PAID_SHEET_NAME = 'Paid'
-QUERY_EMAIL_ADDRESS = 'comtech@emciwireless.com'
-BEFORE_DATE = int(datetime.now().timestamp())
-AFTER_DATE = int((datetime.today() - timedelta(days=5)).timestamp())
+QUERY_EMAIL_ADDRESS = 'celliott@emciwireless.com'
+BEFORE_DATE = int(datetime.today().timestamp())
+AFTER_DATE = int((datetime.today() - timedelta(days=10)).timestamp())
 
 class COLUMN_NAMES(Enum):
     TRANSACTION_ID = 'Transaction ID'
@@ -35,24 +35,40 @@ def get_email_meta(gmail_service, log_file, message_meta):
     return meta
 
 def get_email_raw_data(gmail_service, message_meta):
-    message = gmail_service.users().messages().get(userId='me', id=message_meta['id'], format='raw').execute()
-    
-    return str(base64.urlsafe_b64decode(message['raw'].encode('ASCII')))
+    message = gmail_service.users().messages().get(userId='me', id=message_meta['id'], format='full').execute()
+
+    if(message['payload']['body']['size'] == 0):
+        print("Weird one")
+        for part in message['payload']['parts']:
+            if(part['mimeType'] == 'text/plain'):
+                message_data = part['body']['data']
+                break
+    else:
+        print('Normal one')
+        message_data = message['payload']['body']['data']
+
+    return str(base64.urlsafe_b64decode(message_data))
 
 # Fetch all transactions from the email
 def get_transactions(msg_str):
     transactions = {}
+
+    print(msg_str)
 
     # Find the start of the transactions
     start_index = msg_str.find('\\r\\n', msg_str.find('ENTITY:')) + len('\\r\\n')
     end_index = msg_str.find('\\\\', start_index, -1)
     entry = msg_str[start_index:end_index]
 
+    print(entry)
+
     # Iterate over the email and grab each Transaction ID & Amount pair
     while end_index != -1:
         # Grab the Transation Amount
         fields_end_index = entry.find('\\r\\n')
         fields = entry[0:fields_end_index].split()
+
+        print(fields)
 
         if(len(fields) == 0):
             break
